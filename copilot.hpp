@@ -213,6 +213,7 @@ public:
 	"Claude Sonnet 4.5",
 	"Claude Haiku 4.5",
 	"Claude Opus 4.5",
+	"Claude Sonnet 4",
 	"GPT-5.2-Codex",
 	"GPT-5.1-Codex-Max",
 	"GPT-5.1-Codex",
