@@ -89,6 +89,7 @@ COPILOT cop(L"f:\\llama\\run","f:\\llama\\models\\mistral-7b-instruct-v0.2.Q5_K_
 ```
 If you have a local LLama-based model, you can instantiate using the above format, giving a local LLama server port.
 PushPrompt will then send requests to the local LLama server instead of the GitHub Copilot server.
+The folder is where [llama-server](https://github.com/ggml-org/llama.cpp/releases) is located.
 
 
 # License
