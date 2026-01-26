@@ -25,7 +25,7 @@ cop.EndInteractive();
 * PushPrompt's last parameter is whether to wait for the response. If false, then the "ans" structure includes a HANDLE event to be triggered when the response is ready.
 * COPILOT constructor is
 ```cpp
-COPILOT(std::wstring folder, std::string model = "gpt-4.1",std::string if_server = "")
+COPILOT(std::wstring folder, std::string model = "gpt-4.1",std::string if_server = "",int LLamaPort = 0)
 ```
 * folder is where copilot.exe and python are located
 * model is the model to use (you can get a list of models with static COPILOT::copilot_model_list() function
@@ -82,6 +82,14 @@ auto ans = cop.PushPrompt(L"Tell me the weather in Athens in 25 January 2026",tr
 
 This adds a tool to Copilot that calls the pcall function in the dlltool.dll. The pcall function receives a json string with the tool parameters and must return a json string with the tool results.
 Currently, it returns hardcoded "temperature": "14C", but you can modify it to call a weather API.
+
+# Running a local LLama-based model
+```cpp
+COPILOT cop(L"f:\\llama\\run","f:\\llama\\models\\mistral-7b-instruct-v0.2.Q5_K_M.gguf","",9991);
+```
+If you have a local LLama-based model, you can instantiate using the above format, giving a local LLama server port.
+PushPrompt will then send requests to the local LLama server instead of the GitHub Copilot server.
+
 
 # License
 MIT

@@ -1,9 +1,10 @@
 #include ".\\copilot.hpp"
-
+#pragma comment(lib,"wininet.lib")
 
 int main()
 {
     COPILOT cop(L"f:\\copilot");
+//    COPILOT cop(L"f:\\llama\\run","f:\\llama\\models\\mistral-7b-instruct-v0.2.Q5_K_M.gguf","",9991);
 
 	std::vector<wchar_t> dll_path(1000);
     GetFullPathName(L".\\x64\\Debug\\dlltool.dll", 1000, dll_path.data(), 0);

@@ -13,7 +13,12 @@
 #include <functional>
 #include <vector>
 #include <map>
+#include <sstream>
+#include <wininet.h>
 
+#include "stdinout2.h"
+#include "rest.h"
+#include "json.hpp"
 
 struct TOOL_PARAM
 {
@@ -79,6 +84,7 @@ class COPILOT
 	std::wstring folder;
 	std::string model = "gpt-4.1";
 	std::string if_server = "";
+	int LLama = 0;
 	std::wstring TempFile(const wchar_t* etx)
 	{
 		wchar_t path[1000] = {};
@@ -124,6 +130,18 @@ class COPILOT
 	std::recursive_mutex promptMutex;
 
 	std::queue<COPILOT_QUESTION> Prompts;
+	struct MESSAGE_AND_REPLY
+	{
+		std::wstring message;
+		std::wstring reply;
+	};
+	std::vector<MESSAGE_AND_REPLY> llama_history;
+	float temperature = 0.7f;
+	float top_p = 0.95f;
+	float top_k = 40.0f;
+	int seed = -1;
+	float repeat_penalty = 1.1f;
+
 	std::map<unsigned long long, std::shared_ptr<COPILOT_ANSWER>> Answers;
 
 
@@ -173,11 +191,12 @@ public:
 #else
 	DWORD flg = CREATE_NO_WINDOW;
 #endif
-	COPILOT(std::wstring folder, std::string model = "gpt-4.1",std::string if_server = "")
+	COPILOT(std::wstring folder, std::string model = "gpt-4.1",std::string if_server = "",int LLama = 0)
 	{
 		this->folder = folder;
 		this->model = model;
 		this->if_server = if_server;	
+		this->LLama = LLama;
 	}
 	~COPILOT()
 	{
@@ -295,13 +314,157 @@ public:
 		}
 		return answer;
 	}
+
+
+	void BeginInteractiveLLama()
+	{
+		if (interactiveThread)
+			return;
+
+		interactiveThread = std::make_shared <std::thread>([&]()
+			{
+				std::vector<wchar_t> cmdline(1000);
+				swprintf_s(cmdline.data(), 1000, L"%s\\llama-server.exe --n-gpu-layers 999 -m \"%S\" --port %i", folder.c_str(), model.c_str(), LLama);
+				STDINOUT2* io = new STDINOUT2();
+				io->Prep(false);
+				io->CreateChildProcess(folder.c_str(), cmdline.data());
+				if (1)
+				{
+					std::vector<char> buffer(4096);
+					std::string output;
+					for (;;)
+					{
+						DWORD read = 0;
+						BOOL res = ReadFile(io->g_hChildStd_OUT_Rd, buffer.data(), (DWORD)buffer.size() - 1, &read, NULL);
+						if (!res || read == 0)
+							break;
+						buffer[read] = 0;
+						output += std::string(buffer.data(), read);
+						if (output.find("erver is listening on") != std::string::npos)
+							break;
+					}
+				}
+
+				for (;;)
+				{
+					size_t sz = 0;
+					if (1)
+					{
+						std::lock_guard<std::recursive_mutex> lock(promptMutex);
+						sz = Prompts.size();
+					}
+					if (sz == 0)
+					{
+						Sleep(100);
+						continue;
+					}
+					std::wstring r;
+					std::lock_guard<std::recursive_mutex> lock(promptMutex);
+					auto fr = Prompts.front();
+					Prompts.pop();
+					r = fr.prompt;
+					if (r == L"exit" || r == L"quit")
+					{
+						SetEvent(Answers[fr.key]->hEvent);
+						ReleaseAnswer(fr.key);
+						// Terminate llama-server
+						TerminateProcess(io->piProcInfo.hProcess, 0);
+						break;
+					}
+
+
+					// Build buf
+					nlohmann::json j;
+					j["model"] = "model";
+					j["temperature"] = temperature;
+					j["top_k"] = top_k;
+					j["top_p"] = top_p;
+					j["repeat_penalty"] = repeat_penalty;
+					j["seed"] = seed;
+					nlohmann::json messages = nlohmann::json::array();
+					for (auto& s : llama_history)
+					{
+						nlohmann::json mm;
+						mm["role"] = "user";
+						mm["content"] = s.message;
+						messages.push_back(mm);
+						nlohmann::json mr;
+						mr["role"] = "assistant";
+						mr["content"] = s.reply;
+						messages.push_back(mr);
+					}
+					nlohmann::json mm;
+					mm["role"] = "user";
+					mm["content"] = toc(r.c_str());
+					messages.push_back(mm);
+					j["messages"] = messages;
+
+					auto buf = j.dump();
+
+
+
+					RESTAPI::REST re;
+					re.Connect(L"localhost", false, LLama);
+					auto hr = re.RequestWithBuffer(L"/v1/chat/completions", L"POST", {}, buf.data(), buf.size());
+					std::vector<char> resp;
+					re.ReadToMemory(hr, resp);
+					auto str = std::string(resp.data(), resp.size());
+
+					std::string response;
+					try
+					{
+						nlohmann::json j = nlohmann::json::parse(str);
+						if (j.contains("choices"))
+						{
+							auto& choices = j["choices"];
+							if (choices.is_array() && choices.size())
+							{
+								auto& first = choices[0];
+								if (first.contains("message"))
+								{
+									auto& message = first["message"];
+									if (message.contains("content"))
+									{
+										response =  message["content"].get<std::string>();
+										std::lock_guard<std::recursive_mutex> lock(promptMutex);
+										auto ans = Answers[fr.key];
+										ans->strings.push_back(tou(response.c_str()));
+										SetEvent(ans->hEvent);
+										ReleaseAnswer(fr.key);
+									}
+								}
+							}
+						}
+					}
+					catch (...)
+					{
+					}
+
+					// Post entire history
+					MESSAGE_AND_REPLY mr;
+					mr.message = r;
+					mr.reply = tou(response.c_str());
+					llama_history.push_back(mr);
+				}
+
+
+			});
+
+	}
+
+
 	void BeginInteractive()
 	{
 		if (interactiveThread)
 			return;
+		if (LLama)
+		{
+			BeginInteractiveLLama();
+			return;
+		}
 		interactiveThread = std::make_shared <std::thread> ([&]()
 			{
-				Interactive([](LPARAM lp) -> COPILOT_QUESTION {
+				InteractiveCopilot([](LPARAM lp) -> COPILOT_QUESTION {
 				
 					COPILOT* pThis = (COPILOT*)lp;
 					for (;;)
@@ -357,7 +520,7 @@ public:
 		}
 	}
 
-	void Interactive(std::function<COPILOT_QUESTION(LPARAM lp)> pro,std::function<void(std::wstring, unsigned long long key,LPARAM lp,bool End)> cb,LPARAM lp)
+	void InteractiveCopilot(std::function<COPILOT_QUESTION(LPARAM lp)> pro,std::function<void(std::wstring, unsigned long long key,LPARAM lp,bool End)> cb,LPARAM lp)
 	{	
 		const char* py = R"(
 # import pdb
