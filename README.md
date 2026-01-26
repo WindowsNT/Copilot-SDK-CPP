@@ -56,7 +56,7 @@ extern "C" {
 		return mem;
 	}
 
-	// free memory returned by CallJson
+	// free memory returned by pcall
 	__declspec(dllexport)
 		void pdelete(const char* p)
 	{
