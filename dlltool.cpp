@@ -10,6 +10,7 @@ extern "C" {
 	{
 		json req = json::parse(json_in);
 		json resp;
+		resp["city"] = req["city"];
 		resp["status"] = "ok";
 		resp["temperature"] = "14C";
 

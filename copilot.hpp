@@ -62,12 +62,12 @@ struct COPILOT_QUESTION
 	unsigned long long key = 0;
 };
 
-struct ANSWER
+struct COPILOT_ANSWER
 {
 	std::vector<std::wstring> strings;
 	HANDLE hEvent = 0;
 	unsigned long long key = 0;
-	~ANSWER()
+	~COPILOT_ANSWER()
 	{
 		if (hEvent)
 			CloseHandle(hEvent);
@@ -124,7 +124,7 @@ class COPILOT
 	std::recursive_mutex promptMutex;
 
 	std::queue<COPILOT_QUESTION> Prompts;
-	std::map<unsigned long long, std::shared_ptr<ANSWER>> Answers;
+	std::map<unsigned long long, std::shared_ptr<COPILOT_ANSWER>> Answers;
 
 
 	void ReleaseAnswer(unsigned long long key)
@@ -272,9 +272,9 @@ public:
 
 
 
-	std::shared_ptr<ANSWER> PushPrompt(const std::wstring& prompt,bool W)
+	std::shared_ptr<COPILOT_ANSWER> PushPrompt(const std::wstring& prompt,bool W)
 	{
-		auto answer = std::make_shared<ANSWER>();
+		auto answer = std::make_shared<COPILOT_ANSWER>();
 		if (1)
 		{
 			std::lock_guard<std::recursive_mutex> lock(promptMutex);
