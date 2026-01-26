@@ -12,6 +12,7 @@ Github released the [Copilot SDK](https://github.com/github/copilot-sdk) and her
 #include "copilot.h"
 #include <iostream>
 COPILOT cop(L"c:\\copilot_folder");
+cop.flg = CREATE_NEW_CONSOLE; // to display the python console for debugging
 cop.BeginInteractive();
 auto ans = cop.PushPrompt(L"Tell me a joke",true);
 std::wstring s;
@@ -29,6 +30,58 @@ COPILOT(std::wstring folder, std::string model = "gpt-4.1",std::string if_server
 * folder is where copilot.exe and python are located
 * model is the model to use (you can get a list of models with static COPILOT::copilot_model_list() function
 * if_server can be used to specify a remote copilot.exe running. You must still have the python folder though.
+
+
+# Tool definition
+```cpp
+
+// Example of adding a tool from a dll
+
+// DLL code
+#include "json.hpp"
+using json = nlohmann::json;
+extern "C" {
+
+	__declspec(dllexport)
+		const char* pcall(const char* json_in)
+	{
+		json req = json::parse(json_in);
+		json resp;
+		resp["status"] = "ok";
+		resp["temperature"] = "14C";
+
+		std::string out = resp.dump();
+		char* mem = (char*)std::malloc(out.size() + 1);
+		memcpy(mem, out.c_str(), out.size() + 1);
+		return mem;
+	}
+
+	// free memory returned by CallJson
+	__declspec(dllexport)
+		void pdelete(const char* p)
+	{
+		std::free((void*)p);
+	}
+
+}
+
+
+// Main Code
+std::vector<wchar_t> dll_path(1000);
+GetFullPathName(L".\\x64\\Debug\\dlltool.dll", 1000, dll_path.data(), 0);
+auto sl1 = cop.ChangeSlash(dll_path.data());
+auto dll_idx = cop.AddDll(sl1.c_str(),"pcall","pdelete");
+cop.AddTool(dll_idx, "GetWeather", "Get the current weather for a city in a specific date",{
+        {"city", "str", "Name of the city to get the weather for"},
+        {"date", "int", "Date to get the weather for"}
+    });
+...
+cop.BeginInteractive();
+auto ans = cop.PushPrompt(L"Tell me the weather in Athens in 25 January 2026",true);
+```
+
+This adds a tool to Copilot that calls the pcall function in the dlltool.dll. The pcall function receives a json string with the tool parameters and must return a json string with the tool results.
+Currently, it returns hardcoded "temperature": "14C", but you can modify it to call a weather API.
 
 # License
 MIT

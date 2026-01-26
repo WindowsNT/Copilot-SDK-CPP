@@ -14,6 +14,30 @@
 #include <vector>
 #include <map>
 
+
+struct TOOL_PARAM
+{
+	std::string name;
+	std::string type = "str";
+	std::string desc;
+};
+
+struct TOOL_ENTRY
+{
+	std::string name;
+	std::string desc;	
+	std::vector<TOOL_PARAM> params;
+};
+
+struct DLL_LIST
+{
+	std::wstring dllpath;
+	std::string callfunc;
+	std::string deletefunc;
+	std::vector<TOOL_ENTRY> tools;
+
+};
+
 class PushPopDirX
 {
 	std::vector<wchar_t> cd;
@@ -55,33 +79,6 @@ class COPILOT
 	std::wstring folder;
 	std::string model = "gpt-4.1";
 	std::string if_server = "";
-
-	std::wstring tou(const char* s)
-	{
-		std::vector<wchar_t> buf(strlen(s) + 1);
-		MultiByteToWideChar(CP_UTF8, 0, s, -1, buf.data(), (int)buf.size());
-		return std::wstring(buf.data());
-	}
-
-	std::string toc(const wchar_t* s)
-	{
-		std::vector<char> buf(wcslen(s) * 4 + 1);
-		WideCharToMultiByte(CP_UTF8, 0, s, -1, buf.data(), (int)buf.size(), 0, 0);
-		return std::string(buf.data());
-	}
-
-
-	std::wstring ChangeSlash(const wchar_t* s)
-	{
-		std::wstring r = s;
-		for (size_t i = 0; i < r.size(); i++)
-		{
-			if (r[i] == L'\\')
-				r[i] = L'/';
-		}
-		return r;
-	}
-
 	std::wstring TempFile(const wchar_t* etx)
 	{
 		wchar_t path[1000] = {};
@@ -140,8 +137,36 @@ class COPILOT
 		}
 	}
 
+	std::vector<DLL_LIST> dlls;
+
 
 public:
+
+
+
+	std::wstring tou(const char* s)
+	{
+		std::vector<wchar_t> buf(strlen(s) + 1);
+		MultiByteToWideChar(CP_UTF8, 0, s, -1, buf.data(), (int)buf.size());
+		return std::wstring(buf.data());
+	}
+	std::string toc(const wchar_t* s)
+	{
+		std::vector<char> buf(wcslen(s) * 4 + 1);
+		WideCharToMultiByte(CP_UTF8, 0, s, -1, buf.data(), (int)buf.size(), 0, 0);
+		return std::string(buf.data());
+	}
+	std::wstring ChangeSlash(const wchar_t* s)
+	{
+		std::wstring r = s;
+		for (size_t i = 0; i < r.size(); i++)
+		{
+			if (r[i] == L'\\')
+				r[i] = L'/';
+		}
+		return r;
+	}
+
 
 #ifdef _DEBUG
 	DWORD flg = CREATE_NEW_CONSOLE;
@@ -158,6 +183,30 @@ public:
 	{
 		EndInteractive();
 	}
+
+	bool AddTool(size_t idll,std::string tool_name,std::string tool_desc,std::initializer_list<TOOL_PARAM> params)
+	{
+		if (idll >= dlls.size())
+			return false;
+		TOOL_ENTRY t;
+		t.name = tool_name;
+		t.desc = tool_desc;
+		t.params = params;
+		
+		dlls[idll].tools.push_back(t);
+		return true;
+	}
+
+
+	size_t AddDll(const std::wstring& dllpath, const std::string& callfunc, const std::string& deletefunc)
+	{
+		DLL_LIST d;
+		d.dllpath = dllpath;
+		d.callfunc = callfunc;
+		d.deletefunc = deletefunc;
+		dlls.push_back(d);
+		return dlls.size() - 1;
+	}	
 
 	static std::vector<std::string> copilot_model_list() {
 		return {
@@ -318,13 +367,13 @@ import sys
 import os
 import time
 import ctypes
-from copilot import CopilotClient
-from copilot.tools import define_tool
-from copilot.generated.session_events import SessionEventType
+import json
 from copilot import CopilotClient
 from copilot.tools import define_tool
 from copilot.generated.session_events import SessionEventType
 from pydantic import BaseModel, Field
+
+%s
 
 async def main():
     %s
@@ -333,6 +382,7 @@ async def main():
     session = await client.create_session({
         "model": "%s",
         "streaming": True,
+        "tools": [%s],
     })
     print("Model: ", "%s")
 
@@ -388,7 +438,7 @@ asyncio.run(main())
 		auto tf = TempFile(L"py");
 		auto tin = TempFile(nullptr);
 		auto tout = TempFile(nullptr);
-		std::vector<char> data(100000);
+		std::vector<char> data(1000000);
 
 		std::string cli = "client = CopilotClient()";
 		if (if_server.length() > 0)
@@ -396,8 +446,82 @@ asyncio.run(main())
 			cli = R"(client = CopilotClient({  "cli_url": ")" + if_server + R"(" }))";
 		}
 
+		std::string dll_entries;
+		std::string tools;
+		for (size_t iDLL = 0 ; iDLL < dlls.size() ;iDLL++)
+		{
+			auto& d = dlls[iDLL];
+			std::vector<char> d1(10000);
+			sprintf_s(d1.data(),10000,R"(dll%zi = ctypes.CDLL("%s")
+dll%zi.pcall.argtypes = (ctypes.c_char_p,)
+dll%zi.pcall.restype  = ctypes.c_void_p
+dll%zi.pdelete.argtypes = (ctypes.c_void_p,)
+def call_cpp%zi(obj):
+    s = json.dumps(obj).encode("utf-8")
+    p = dll%zi.pcall(s)
+    result = ctypes.string_at(p).decode("utf-8")
+    dll%zi.pdelete(p)
+    return json.loads(result)
+)", iDLL + 1,toc(d.dllpath.c_str()).c_str(), iDLL + 1, iDLL + 1,iDLL + 1,iDLL + 1,iDLL + 1,iDLL + 1);
+			dll_entries += d1.data();
+			dll_entries += "\r\n";
 
-		sprintf_s(data.data(), data.size(), py, cli.c_str(), model.c_str(), model.c_str(), toc(ChangeSlash(tout.c_str()).c_str()).c_str(), toc(ChangeSlash(tin.c_str()).c_str()).c_str(), toc(ChangeSlash(tout.c_str()).c_str()).c_str());
+			// Tools for this dll
+			for (size_t iTool = 0; iTool < d.tools.size(); iTool++)
+			{
+				auto& t = d.tools[iTool];
+				sprintf_s(d1.data(), 1000, R"(class tool%zi%zi_params(BaseModel):)", iDLL + 1, iTool + 1);
+				dll_entries += d1.data();
+				dll_entries += "\r\n";
+				for (size_t iParam = 0; iParam < t.params.size(); iParam++)
+				{
+					auto& p = t.params[iParam];
+					sprintf_s(d1.data(), 1000, R"(    %s: %s = Field(description="%s"))", p.name.c_str(), p.type.c_str(), p.desc.c_str());
+					dll_entries += d1.data();
+					dll_entries += "\r\n";
+				}
+
+				tools += t.name;
+				if (iTool != d.tools.size() - 1)
+					tools += ",";
+
+				dll_entries += "\r\n";
+				sprintf_s(d1.data(), 1000, R"(@define_tool(description="%s")
+async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str(), iDLL + 1, iTool + 1);
+				dll_entries += d1.data();
+				dll_entries += "\r\n";
+
+				for (size_t iParam = 0; iParam < t.params.size(); iParam++)
+				{
+					auto& p = t.params[iParam];
+					sprintf_s(d1.data(), 1000, R"(    %s = params.%s)",p.name.c_str(),p.name.c_str());
+					dll_entries += d1.data();
+					dll_entries += "\r\n";
+				}
+
+				sprintf_s(d1.data(), 1000, R"(    resp = await asyncio.to_thread(call_cpp%zi,{)", iDLL + 1);
+				dll_entries += d1.data();
+
+				for (size_t iParam = 0; iParam < t.params.size(); iParam++)
+				{
+					auto& p = t.params[iParam];
+					sprintf_s(d1.data(), 1000, R"("%s": %s)",p.name.c_str(),p.name.c_str());
+					dll_entries += d1.data();
+					if (iParam != t.params.size() - 1)
+						dll_entries += ",";
+				}
+
+				sprintf_s(d1.data(), 1000, R"(}))");
+				dll_entries += d1.data();
+				dll_entries += "\r\n";
+				dll_entries += "    return resp";
+				dll_entries += "\r\n";
+			}
+
+		}
+
+
+		sprintf_s(data.data(), data.size(), py, dll_entries.c_str(),cli.c_str(), model.c_str(),tools.c_str(), model.c_str(), toc(ChangeSlash(tout.c_str()).c_str()).c_str(), toc(ChangeSlash(tin.c_str()).c_str()).c_str(), toc(ChangeSlash(tout.c_str()).c_str()).c_str());
 
 		FILE* f = nullptr;
 		_wfopen_s(&f, tf.c_str(), L"wb");
