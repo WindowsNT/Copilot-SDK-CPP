@@ -549,7 +549,7 @@ public:
 
 
 					RESTAPI::REST re;
-					re.Connect(L"localhost", false, LLama);
+					re.Connect(L"localhost", false, (short)LLama);
 					auto hr = re.RequestWithBuffer(L"/v1/chat/completions", L"POST", {}, buf.data(), buf.size());
 					std::string response;
 
