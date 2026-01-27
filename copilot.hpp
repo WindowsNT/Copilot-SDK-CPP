@@ -482,7 +482,6 @@ public:
 							break;
 						buffer[read] = 0;
 						auto strx = std::string(buffer.data(), read);
-						std::cout << strx;
 						output +=  strx;
 						if (output.find("erver is listening on") != std::string::npos)
 							break;
