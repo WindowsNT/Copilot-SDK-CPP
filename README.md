@@ -1,4 +1,4 @@
-# Copilot/LLama SDK for C++
+# Copilot/LLama/Ollama SDK for C++
 
 Github released the [Copilot SDK](https://github.com/github/copilot-sdk) and here 's a C++ wrapper around it to be used in Windows. This also allows to use a local LLama-based model through a local llama-server.
 
@@ -9,6 +9,9 @@ Github released the [Copilot SDK](https://github.com/github/copilot-sdk) and her
 
 # LLama Installation
 Create a folder where [llama-server](https://github.com/ggml-org/llama.cpp/releases) is located.
+
+# Ollama 
+Download and run [Ollama](https://ollama.com/), specify to make it visible to the network.
 
 # Usage
 ```cpp
@@ -32,13 +35,6 @@ cop.EndInteractive();
 
 * PushPrompt's true/false parameter is whether to wait for the response. If false, then the "ans" structure includes a HANDLE event to be triggered when the response is ready.
 * You can provide a callback function to receive tokens as they arrive.
-* COPILOT constructor is
-```cpp
-COPILOT(std::wstring folder, std::string model = "gpt-4.1",std::string if_server = "",int LLamaPort = 0)
-```
-* folder is where copilot.exe and python are located
-* model is the model to use (you can get a list of models with static COPILOT::copilot_model_list() function
-* if_server can be used to specify a remote copilot.exe running. You must still have the python folder though.
 
 
 # Tool definition
@@ -96,9 +92,17 @@ Currently, it returns hardcoded "temperature": "14C", but you can modify it to c
 ```cpp
 COPILOT cop(L"f:\\llama\\run","f:\\llama\\models\\mistral-7b-instruct-v0.2.Q5_K_M.gguf","",9991);
 ```
-If you have a local LLama-based model, you can instantiate using the above format, giving a local LLama server port.
+If you have a local LLama-based model, you can instantiate using the above format, giving a local LLama server port. f:\\llama\\run should be the [llama-server](https://github.com/ggml-org/llama.cpp/releases) location.
 PushPrompt will then send requests to the local LLama server instead of the GitHub Copilot server.
 
+# Connecting to Ollama
+```cpp
+COPILOT_CUSTOM_PROVIDER cp;
+cp.type = "openai";
+cp.base_url = "http://localhost:11434";
+COPILOT cop(L"f:\\copilot", "deepseek-r1:8b", "", 0, optional_api_key, 0, &cp);
+```
+This will reuse an existing Ollama server with the specified model. You can also use any other provider that requires an API key, such as OpenAI, Azure etc. 
 
 
 # License

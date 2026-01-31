@@ -7,7 +7,7 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 
 
-
+/*
 void TestOpenAI()
 {
     COPILOT cop(L"", "Gemini", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", 0,
@@ -36,7 +36,7 @@ void TestOpenAI()
     cop.EndInteractive();
 
 }
-
+*/
 
 void TestLLama()
 {
@@ -105,6 +105,30 @@ void TestCopilot()
 
 }
 
+
+void TestOllama()
+{
+    COPILOT_CUSTOM_PROVIDER cp;
+    cp.type = "openai";
+    
+    cp.base_url = "http://localhost:11434/v1";
+    COPILOT cop(L"f:\\copilot", "deepseek-r1:8b", "", 0, nullptr, 0, &cp);
+
+    cop.flg = CREATE_NEW_CONSOLE;
+    cop.BeginInteractive();
+    auto ans = cop.PushPrompt(L"Hello there", true, [](std::string tok, LPARAM lp)->HRESULT
+        {
+            COPILOT* cop = (COPILOT*)lp;
+            std::wcout << cop->tou(tok.c_str());
+            return S_OK;
+        }, (LPARAM)&cop);
+    std::wstring s;
+    for (auto& str : ans->strings)
+        s += str;
+    MessageBox(0, s.c_str(), 0, 0);
+    cop.EndInteractive();
+}
+
 int main()
 {
 
@@ -117,4 +141,5 @@ int main()
 //    TestOpenAI();
 //    TestLLama();
     TestCopilot();
+//    TestOllama();
 }

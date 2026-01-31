@@ -50,6 +50,13 @@ enum class LlamaBackend
 
 
 
+struct COPILOT_CUSTOM_PROVIDER
+{
+	std::string type; // example  openai for ollama
+	std::string base_url; //  "http://localhost:11434/v1"; // Example Ollama
+}
+;
+
 struct TOOL_PARAM
 {
 	std::string name;
@@ -125,6 +132,8 @@ class COPILOT
 {
 	std::wstring folder;
 	std::string model = "gpt-4.1";
+	std::string reasoning_effort = "";
+	COPILOT_CUSTOM_PROVIDER custom_copilot_provider;
 	std::string if_server = "";
 	int LLama = 0;
 	std::wstring TempFile(const wchar_t* etx)
@@ -169,7 +178,7 @@ class COPILOT
 	}
 
 	std::shared_ptr<std::thread> interactiveThread;
-	HANDLE hLLamaProcess = 0;
+	HANDLE hProcess = 0;
 	std::recursive_mutex promptMutex;
 
 	std::queue<COPILOT_QUESTION> Prompts;
@@ -270,14 +279,18 @@ public:
 #else
 	DWORD flg = CREATE_NO_WINDOW;
 #endif
-	COPILOT(std::wstring folder, std::string model = "gpt-4.1",std::string if_server = "",int LLama = 0,const wchar_t* apikey = 0)
+	COPILOT(std::wstring folder, std::string model = "gpt-4.1",std::string if_server = "",int LLama = 0,const wchar_t* apikey = 0,const char* reasoning_effort = 0, COPILOT_CUSTOM_PROVIDER* custom_provider = 0)
 	{
 		this->folder = folder;
 		this->model = model;
+		if (reasoning_effort)
+			this->reasoning_effort = reasoning_effort;
 		this->if_server = if_server;	
 		this->LLama = LLama;
 		if (apikey)
 			this->api_key = apikey;
+		if (custom_provider)
+			this->custom_copilot_provider = *custom_provider;
 	}
 	~COPILOT()
 	{
@@ -505,8 +518,23 @@ public:
 		}
 		if (W)
 		{
-			WaitForSingleObject(answer->hEvent, INFINITE);
-			ReleaseAnswer(answer->key);
+			for (;;)
+			{
+				auto wi = WaitForSingleObject(answer->hEvent, 1000);
+				if (wi == WAIT_OBJECT_0)
+				{
+					ReleaseAnswer(answer->key);
+					break;
+				}
+				// Check process 
+				DWORD ec = 0;
+				GetExitCodeProcess(hProcess, &ec);
+				if (ec != STILL_ACTIVE)
+				{
+					ReleaseAnswer(answer->key);
+					break;
+				}
+			}
 		}
 		return answer;
 	}
@@ -550,7 +578,7 @@ public:
 								break;
 						}
 					}
-					hLLamaProcess =io->piProcInfo.hProcess;
+					hProcess =io->piProcInfo.hProcess;
 
 				}
 				for (;;)
@@ -576,9 +604,9 @@ public:
 						SetEvent(Answers[fr.key]->hEvent);
 						ReleaseAnswer(fr.key);
 						// Terminate llama-server
-						if (hLLamaProcess)
-							TerminateProcess(hLLamaProcess, 0);
-						hLLamaProcess = 0;
+						if (hProcess)
+							TerminateProcess(hProcess, 0);
+						hProcess = 0;
 						break;
 					}
 
@@ -911,12 +939,10 @@ async def main():
     struct.pack_into("<I", buf, 8, 1024*1024)  # capacity
     await client.start()
 
-    session = await client.create_session({
-        "model": "%s",
-        "streaming": True,
-        "tools": [%s],
-    })
-    print("Model: ", "%s")
+%s
+
+    session = await client.create_session(session_config)
+    print("Model: ", session_config['model'])
 
     def ring_write(payload: bytes):
         buf = shm_out.buf
@@ -1006,6 +1032,9 @@ asyncio.run(main())
 
 		PushPopDirX ppd(folder.c_str());
 		auto tf = TempFile(L"py");
+#ifdef _DEBUG
+		tf = L"r:\\1.py";
+#endif
 		std::vector<char> data(1000000);
 
 		CLSID clsid = {};
@@ -1019,8 +1048,9 @@ asyncio.run(main())
 			cli = R"(client = CopilotClient({  "cli_url": ")" + if_server + R"(" }))";
 		}
 
+
 		std::string dll_entries;
-		std::string tools;
+		std::vector<std::string> tools_array;
 		for (size_t iDLL = 0 ; iDLL < dlls.size() ;iDLL++)
 		{
 			auto& d = dlls[iDLL];
@@ -1054,9 +1084,7 @@ def call_cpp%zi(obj):
 					dll_entries += "\r\n";
 				}
 
-				tools += t.name;
-				if (iTool != d.tools.size() - 1)
-					tools += ",";
+				tools_array.push_back(t.name);
 
 				dll_entries += "\r\n";
 				sprintf_s(d1.data(), 1000, R"(@define_tool(description="%s")
@@ -1094,9 +1122,76 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 		}
 
 
+		std::vector<char> config(10000);
+		// init
+		sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), "    session_config = {");
+
+		// model
+		sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+        "model": "%s",
+        "streaming": True,)", model.c_str());
+
+		// reasoning_effort
+		if (this->reasoning_effort.length())
+		{
+			sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+        "reasoning_effort": "%s",)", this->reasoning_effort.c_str());
+		}
+
+		// Tools
+		if (tools_array.size())
+		{
+			sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+        "tools": [)");
+			for (size_t i = 0; i < tools_array.size(); i++)
+			{
+				sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+            %s)", tools_array[i].c_str());
+				if (i != tools_array.size() - 1)
+					sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), ",");
+			}
+			sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+        ],)");
+		}
+
+		if (custom_copilot_provider.type.length() > 2)
+		{
+			// build something like 
+			/*
+			"provider": {
+        "type": "...",
+        "base_url": "...",  # Ollama endpoint
+        "api_key": "..."
+    },
+	*/
+
+			sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+        "provider": {
+            "type": "%s",)", custom_copilot_provider.type.c_str());
+			if (custom_copilot_provider.base_url.length() > 0)
+			{
+				sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+            "base_url": "%s",)", custom_copilot_provider.base_url.c_str());
+			}
+			if (api_key.length() > 0)
+			{
+				sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+            "api_key": "%S",)", api_key.c_str());
+			}
+			// end provider
+			sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+        },)");
+		}
+
+		// end
+		sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+    })");
+
+
 		sprintf_s(data.data(), data.size(), py, dll_entries.c_str(),cli.c_str(), 
 			clsid_buf, clsid_buf, clsid_buf, clsid_buf,
-			model.c_str(),tools.c_str(), model.c_str());
+			config.data()
+			);
 
 		FILE* f = nullptr;
 		_wfopen_s(&f, tf.c_str(), L"wb");
@@ -1104,7 +1199,7 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 		fclose(f);
 		std::wstring cmd = L"python \"" + tf + L"\"";
 
-		auto hi = Run(cmd.c_str(), false, flg);
+		hProcess = Run(cmd.c_str(), false, flg);
 
 		// Get the shared memory and events
 	
@@ -1130,7 +1225,9 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 		if (!hFM || !hFO || !hEI || !hEO)
 		{
 			CloseAllHandles();
-			CloseHandle(hi);
+			if (hProcess)
+				CloseHandle(hProcess);
+			hProcess = 0;
 			DeleteFileW(tf.c_str());
 			return;
 		}
@@ -1142,7 +1239,7 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 		{
 			// If ended ?
 			DWORD ec = 0;
-			GetExitCodeProcess(hi, &ec);
+			GetExitCodeProcess(hProcess, &ec);
 			if (ec != STILL_ACTIVE)
 				break;
 			auto q = pro(lp);
@@ -1176,6 +1273,23 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 				bool Ended = false;
 				for (; !Ended;)
 				{
+					// Wait for output event
+					for (;;)
+					{
+						auto wai = WaitForSingleObject(hEO, 1000);
+						if (wai == WAIT_OBJECT_0)
+							break;
+						// Check Process
+						DWORD ec = 0;
+						GetExitCodeProcess(hProcess, &ec);
+						if (ec != STILL_ACTIVE)
+						{
+							Ended = true;
+							break;
+						}
+
+					}
+
 					if (1)
 					{
 						// Read shared memory
@@ -1215,7 +1329,7 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 			}
 		}
 
-		CloseHandle(hi);
+		CloseHandle(hProcess);
 		DeleteFileW(tf.c_str());
 
 	}
