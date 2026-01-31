@@ -4,7 +4,6 @@
 #pragma once
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <ws2tcpip.h>
 #include <wincrypt.h>   
 #include <ShlObj.h>
 #include <string>
@@ -13,10 +12,13 @@
 #include <functional>
 #include <vector>
 #include <map>
+#include <any>
 #include <sstream>
 #include <wininet.h>
 #include <dxgi.h>
 #include <atlbase.h>
+#undef min
+#undef max
 #include <dxgi1_2.h>
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "wininet.lib")
@@ -111,6 +113,14 @@ struct COPILOT_ANSWER
 		hEvent = 0;
 	}
 };
+
+struct COPILOT_MODEL
+{
+	std::string name;
+	float rate = 0.0f;
+	bool Premium = 0;
+};
+
 class COPILOT
 {
 	std::wstring folder;
@@ -133,7 +143,7 @@ class COPILOT
 		return s;
 	}
 
-	HANDLE Run(const wchar_t* y, bool W, DWORD flg)
+	HANDLE Run(const wchar_t* y, bool W, DWORD flgx)
 	{
 		PROCESS_INFORMATION pInfo = { 0 };
 		STARTUPINFO sInfo = { 0 };
@@ -141,7 +151,7 @@ class COPILOT
 		sInfo.cb = sizeof(sInfo);
 		wchar_t yy[1000];
 		swprintf_s(yy, 1000, L"%s", y);
-		CreateProcess(0, yy, 0, 0, 0, flg, 0, 0, &sInfo, &pInfo);
+		CreateProcess(0, yy, 0, 0, 0, flgx, 0, 0, &sInfo, &pInfo);
 		SetPriorityClass(pInfo.hProcess, IDLE_PRIORITY_CLASS);
 		SetThreadPriority(pInfo.hThread, THREAD_PRIORITY_IDLE);
 		if (W)
@@ -191,10 +201,45 @@ class COPILOT
 
 	std::vector<DLL_LIST> dlls;
 	std::wstring api_key;
+	HANDLE hFM = 0, hFO = 0, hEI = 0, hEO = 0;
+	void* p1 = 0;
+	void* p2 = 0;
+
+	void CloseAllHandles()
+	{
+		if (p2)
+			UnmapViewOfFile(p2);
+		p2 = 0;
+		if (p1)
+			UnmapViewOfFile(p1);
+		p1 = 0;
+
+
+		if (hFM)
+		{
+			CloseHandle(hFM);
+			hFM = 0;
+		}
+		if (hFO)
+		{
+			CloseHandle(hFO);
+			hFO = 0;
+		}
+		if (hEI)
+		{
+			CloseHandle(hEI);
+			hEI = 0;
+		}
+		if (hEO)
+		{
+			CloseHandle(hEO);
+			hEO = 0;
+		}
+	}
 
 public:
 
-
+	std::any user_data;
 
 	static std::wstring tou(const char* s)
 	{
@@ -263,25 +308,38 @@ public:
 		return dlls.size() - 1;
 	}	
 
-	static std::vector<std::string> copilot_model_list() {
+	static std::vector<COPILOT_MODEL> copilot_model_list() {
 		return {
-	"Claude Sonnet 4.5",
-	"Claude Haiku 4.5",
-	"Claude Opus 4.5",
-	"Claude Sonnet 4",
-	"GPT-5.2-Codex",
-	"GPT-5.1-Codex-Max",
-	"GPT-5.1-Codex",
-	"GPT-5.2",
-	"GPT-5.1",
-	"GPT-5",
-	"GPT-5.1-Codex-Mini",
-	"GPT-5 mini",
-	"GPT-4.1",
-	"Gemini 3 Pro (Preview)",
+			{"GPT-4.1",0,0},
+			{"GPT-5-Mini",0,0},
+
+			{"GPT-5",1,1},
+			{"GPT-5.1",1,1},
+			{"GPT-5.1-Codex-Mini",0.33f,1},
+			{"GPT-5.1-Codex",1,1},
+			{"GPT-5.1-Codex-Max",1,1},
+			{"GPT-5.2",1,1},
+			{"GPT-5.2-Codex",1,1},
+
+			{"Claude-Haiku-4.5",0.33f,1},
+			{"Claude-Sonnet-4",1,1},
+			{"Claude-Sonnet-4.5",1,1},
+			{"Claude-Opus-4.5",3.0f,1},
+
+			{ "Gemini-2.5-Pro",1,1 },
+			{ "Gemini-3-Pro-Preview",1,1 },
+
 		};
 	};
 
+	/*
+		"Claude Sonnet 4.5",
+	"Claude Haiku 4.5",
+	"Claude Opus 4.5",
+	"Claude Sonnet 4",
+	"Gemini 3 Pro (Preview)",
+
+	*/
 
 
 	static GpuCaps DetectGpuCaps()
@@ -578,8 +636,6 @@ public:
 
 					auto buf = j.dump();
 
-
-
 					RESTAPI::ihandle hr;
 					RESTAPI::REST re;
 					if (if_server.length() == 0)
@@ -809,15 +865,17 @@ public:
 			});
 	}
 
-	void EndInteractive()
+	void EndInteractive(bool PushedExit = false)
 	{
 		if (interactiveThread)
 		{
-			PushPrompt(L"exit", true);
+			if (!PushedExit)	
+				PushPrompt(L"exit", true);
 			interactiveThread->join();
 			interactiveThread.reset();
 			interactiveThread = nullptr;
 		}
+		CloseAllHandles();
 	}
 
 	void InteractiveCopilot(std::function<COPILOT_QUESTION(LPARAM lp)> pro,std::function<void(std::wstring, unsigned long long key,LPARAM lp,bool End)> cb,LPARAM lp)
@@ -827,10 +885,13 @@ public:
 import asyncio
 import random
 import sys
+import struct
 import os
 import time
 import ctypes
+import win32event
 import json
+from multiprocessing.shared_memory import SharedMemory
 from copilot import CopilotClient
 from copilot.tools import define_tool
 from copilot.generated.session_events import SessionEventType
@@ -840,6 +901,14 @@ from pydantic import BaseModel, Field
 
 async def main():
     %s
+    shm_in = SharedMemory(name="shm_in_%S", create=True, size=1024*1024)
+    shm_out = SharedMemory(name="shm_out_%S", create=True, size=1024*1024)
+    ev_in = win32event.CreateEvent(None, 0, 0, "ev_in_%S")
+    ev_out = win32event.CreateEvent(None, 0, 0, "ev_out_%S")
+    buf = shm_out.buf
+    struct.pack_into("<I", buf, 0, 0)         # write_index
+    struct.pack_into("<I", buf, 4, 0)         # read_index
+    struct.pack_into("<I", buf, 8, 1024*1024)  # capacity
     await client.start()
 
     session = await client.create_session({
@@ -849,33 +918,67 @@ async def main():
     })
     print("Model: ", "%s")
 
-    a = 1
+    def ring_write(payload: bytes):
+        buf = shm_out.buf
+        w = struct.unpack_from("<I", buf, 0)[0]
+        r = struct.unpack_from("<I", buf, 4)[0]
+	    
+        capacity = struct.unpack_from("<I", buf, 8)[0]
+        data_off = 12
+	    
+        msg_len = 4 + len(payload)
+	    
+        # free space
+        if w >= r:
+            free = capacity - (w - r)
+        else:
+            free = r - w
+	    
+        if free <= msg_len:
+            # FULL drop
+            return False
+	    
+        pos = data_off + w;
+        # write size
+        struct.pack_into("<I", buf, pos, len(payload))
+        pos += 4	
+        # payload (wrap safe)
+        end = min(len(payload), capacity - (w + 4))
+        buf[pos:pos+end] = payload[:end]
+        if end < len(payload):
+            buf[data_off:data_off+(len(payload)-end)] = payload[end:]
+	    
+        # advance write
+        struct.pack_into("<I", buf, 0, (w + msg_len) %% capacity)
+        return True
+
+
     def handle_event(event):
-        nonlocal a
         if event.type == SessionEventType.ASSISTANT_MESSAGE_DELTA:
-            with open("%s" + str(a) + ".txt", "w", encoding="utf-8") as f:
-                f.write(event.data.delta_content)
-                f.flush()
-                # also to display
-                print(event.data.delta_content, end="")
-                a = a + 1
+            payload = event.data.delta_content.encode("utf-8")
+            # print it
+            print(event.data.delta_content, end='', flush=True)
+            ring_write(payload)
+            # set event
+            win32event.SetEvent(ev_out)
 
     session.on(handle_event)
 
-    b = 1
+    loop = asyncio.get_running_loop()
     while True:
-        fii = "%s" + str(b) + ".txt"
-        if not os.path.exists(fii):
-            time.sleep(1)
-            continue
-        time.sleep(1)
-        with open(fii, "r",encoding="utf-8") as f:
-            user_input = f.read().strip()
-        # delete the file after reading
-        os.remove(fii)
-        # trim crlf at the end
-        # pdb.set_trace()
-        user_input = user_input.rstrip("\r\n")
+        await loop.run_in_executor(
+            None,
+            win32event.WaitForSingleObject,
+            ev_in,
+            win32event.INFINITE
+            )
+        # first 4 bytes = size
+        buf = shm_in.buf
+        size = struct.unpack_from("<I", buf, 0)[0]
+        if size == 0 or size > len(buf) - 4:
+            continue  # corrupted / empty
+        payload = bytes(buf[4:4+size])
+        user_input = payload.decode("utf-8").rstrip("\r\n")
         print("\033[92m",user_input,"\033[0m")
         if user_input == "exit":
             print("Exiting interactive session.")
@@ -884,24 +987,31 @@ async def main():
             print("Exiting interactive session.")
             break
         await session.send_and_wait({"prompt": user_input})
+        # also send --end--
+        end_payload = "--end--".encode("utf-8")
         print("");
-        b += 1
-        # Indicate end of response
-        with open("%s" + str(a) + ".txt", "w", encoding="utf-8") as f:
-            f.write("--end--")
-            f.flush()
-            a = a + 1
+        ring_write(end_payload)
+        win32event.SetEvent(ev_out)
+
+    shm_in.close()
+    shm_out.close()
+    shm_in.unlink()
+    shm_out.unlink()       
     
 asyncio.run(main())
+
 
 
 )";
 
 		PushPopDirX ppd(folder.c_str());
 		auto tf = TempFile(L"py");
-		auto tin = TempFile(nullptr);
-		auto tout = TempFile(nullptr);
 		std::vector<char> data(1000000);
+
+		CLSID clsid = {};
+		CoCreateGuid(&clsid);
+		wchar_t clsid_buf[100] = {};
+		StringFromGUID2(clsid, clsid_buf, 100);
 
 		std::string cli = "client = CopilotClient()";
 		if (if_server.length() > 0)
@@ -984,7 +1094,9 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 		}
 
 
-		sprintf_s(data.data(), data.size(), py, dll_entries.c_str(),cli.c_str(), model.c_str(),tools.c_str(), model.c_str(), toc(ChangeSlash(tout.c_str()).c_str()).c_str(), toc(ChangeSlash(tin.c_str()).c_str()).c_str(), toc(ChangeSlash(tout.c_str()).c_str()).c_str());
+		sprintf_s(data.data(), data.size(), py, dll_entries.c_str(),cli.c_str(), 
+			clsid_buf, clsid_buf, clsid_buf, clsid_buf,
+			model.c_str(),tools.c_str(), model.c_str());
 
 		FILE* f = nullptr;
 		_wfopen_s(&f, tf.c_str(), L"wb");
@@ -993,64 +1105,116 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 		std::wstring cmd = L"python \"" + tf + L"\"";
 
 		auto hi = Run(cmd.c_str(), false, flg);
-		int a = 1, b = 1;
-		for (;;)
+
+		// Get the shared memory and events
+	
+		// 5 tries
+		for (int tr = 0; tr < 5; tr++)
+		{
+			if (!hFM)
+				hFM = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, (L"shm_in_" + std::wstring(clsid_buf)).c_str());
+			if (!hFO)
+				hFO = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, (L"shm_out_" + std::wstring(clsid_buf)).c_str());
+			if (!hEI)
+				hEI = OpenEventW(EVENT_ALL_ACCESS, FALSE, (L"ev_in_" + std::wstring(clsid_buf)).c_str());
+			if (!hEO)
+				hEO = OpenEventW(EVENT_ALL_ACCESS, FALSE, (L"ev_out_" + std::wstring(clsid_buf)).c_str());
+			if (!hFM || !hFO || !hEI || !hEO)
+			{
+				Sleep(1000);
+	
+			}
+			else
+				break;
+		}
+		if (!hFM || !hFO || !hEI || !hEO)
+		{
+			CloseAllHandles();
+			CloseHandle(hi);
+			DeleteFileW(tf.c_str());
+			return;
+		}
+		p1 = MapViewOfFile(hFM, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+		p2 = MapViewOfFile(hFO, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+
+
+		for (; p1 && p2 ;)
 		{
 			// If ended ?
 			DWORD ec = 0;
 			GetExitCodeProcess(hi, &ec);
 			if (ec != STILL_ACTIVE)
 				break;
-
 			auto q = pro(lp);
 			std::string prompt = toc(q.prompt.c_str());
-			// write it to tin
+
+			// Write it to shared memory
+			if (1)
 			{
-				std::wstring fn = tin + std::to_wstring(b) + L".txt";
-				FILE* f = nullptr;
-				_wfopen_s(&f, fn.c_str(), L"wb");
-				if (f)
-				{
-					fwrite(prompt.c_str(), 1, prompt.size(), f);
-					fclose(f);
-					b++;
-				}
+				auto buf = (char*)p1;
+				size_t sz = prompt.size();
+				if (sz > 1020)
+					sz = 1020;
+				// First 4 bytes = size
+				*(unsigned int*)buf = (unsigned int)sz;
+				memcpy(buf + 4, prompt.c_str(), sz);
+				// Signal event
+				SetEvent(hEI);
 			}
 
-			// Now read response
-			for (int sleepcount = 0;  sleepcount < 500 ;)
+			if (prompt == "exit" || prompt == "quit")
+				break;
+
+			if (1)
 			{
-				// If ended ?
-				DWORD ec = 0;
-				GetExitCodeProcess(hi, &ec);
-				if (ec != STILL_ACTIVE)
-					break;
-				auto fn = tout + std::to_wstring(a) + L".txt";
-				FILE* f = nullptr;
-				_wfopen_s(&f, fn.c_str(), L"rb");
-				if (f)
+				uint8_t* base = (uint8_t*)p2;
+
+				uint32_t* write_idx = (uint32_t*)(base + 0);
+				uint32_t* read_idx = (uint32_t*)(base + 4);
+				uint32_t  capacity = *(uint32_t*)(base + 8);
+				uint8_t* data = base + 12;
+				bool Ended = false;
+				for (; !Ended;)
 				{
-					fseek(f, 0, SEEK_END);
-					auto sz = ftell(f);
-					fseek(f, 0, SEEK_SET);
-					std::vector<char> outdata(sz + 1);
-					fread(outdata.data(), 1, sz, f);
-					outdata[sz] = 0;
-					fclose(f);
-					DeleteFileW(fn.c_str());
-					std::wstring o = tou(outdata.data());
-					cb(o,q.key, lp, o == L"--end--");
-					a++;
-					if (o == L"--end--")
-						break;
-				}
-				else
-				{
-					Sleep(100);
-					sleepcount++;
+					if (1)
+					{
+						// Read shared memory
+						while (*read_idx != *write_idx)
+						{
+							// read size
+							uint32_t size;
+							memcpy(&size, data + *read_idx, 4);
+							*read_idx = (*read_idx + 4) % capacity;
+
+							// read payload
+							std::vector<char> buf(size);
+
+							uint32_t first = std::min(size, capacity - *read_idx);
+							memcpy(buf.data(), data + *read_idx, first);
+
+							if (first < size)
+								memcpy(buf.data() + first, data, size - first);
+
+							*read_idx = (*read_idx + size) % capacity;
+
+							std::string msg(buf.begin(), buf.end());
+
+							// ---- termination check ----
+							if (msg == "--end--")
+							{
+								// Call callback
+								cb(tou(msg.c_str()), q.key, lp, true);
+								Ended = true;
+								break;
+							}
+							// Call callback
+							cb(tou(msg.c_str()), q.key, lp, false);
+						}
+					}
 				}
 			}
 		}
+
 		CloseHandle(hi);
 		DeleteFileW(tf.c_str());
 

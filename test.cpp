@@ -1,6 +1,12 @@
 #include <iostream>
 #include ".\\copilot.hpp"
 #pragma comment(lib,"wininet.lib")
+#pragma comment(linker,"\"/manifestdependency:type='win32' \
+name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+
+
+
 
 void TestOpenAI()
 {
@@ -85,6 +91,16 @@ void TestCopilot()
     for (auto& str : ans->strings)
         s += str;
     MessageBox(0, s.c_str(), 0, 0);
+    ans = cop.PushPrompt(L"Tell me about WW1", true, [](std::string tok, LPARAM lp)->HRESULT
+        {
+            COPILOT* cop = (COPILOT*)lp;
+            std::wcout << cop->tou(tok.c_str());
+            return S_OK;
+        }, (LPARAM)&cop);
+    s.clear();
+    for (auto& str : ans->strings)
+        s += str;
+    MessageBox(0, s.c_str(), 0, 0);
     cop.EndInteractive();
 
 }
@@ -99,6 +115,6 @@ int main()
     SetConsoleMode(hOut, dwMode);
 
 //    TestOpenAI();
-    TestLLama();
+//    TestLLama();
     TestCopilot();
 }
