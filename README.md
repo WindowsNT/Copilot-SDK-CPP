@@ -31,7 +31,7 @@ struct COPILOT_PARAMETERS
 	bool Debug = 0;
 #endif
 };
-
+```
 Where
  - folder: folder where copilot.exe and python are located, or llama-server for local LLama models
  - model: model name, for Copilot use "gpt-4.1" or other supported models (copilot_model_list()) , for local LLama use the model name loaded in llama-server, for Ollama use the model name available in Ollama
@@ -43,6 +43,7 @@ Where
  - custom_provider_base_url: For Ollama, use "http://localhost:11434/v1"
  - Debug: enable debug output
 
+```cpp
 #include "copilot.h"
 #include <iostream>
 COPILOT_PARAMETERS cp;
