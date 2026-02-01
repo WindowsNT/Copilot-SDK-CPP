@@ -55,10 +55,14 @@ void AskQuestion(COPILOT& cop,bool Tool)
     }
     if (1)
     {
+		static int cnt = 0;
         auto ans = cop.PushPrompt(L"Tell me about WW1", true, [](std::string tok, LPARAM lp)->HRESULT
             {
                 COPILOT* cop = (COPILOT*)lp;
                 std::wcout << cop->tou(tok.c_str());
+                cnt++;
+                if (cnt > 30)
+                    cop->CancelCurrent();
                 return S_OK;
             }, (LPARAM)&cop);
         std::wstring s;
@@ -147,5 +151,5 @@ int main()
 //    TestOpenAI();
 //    TestLLama();
       TestCopilot();
-//    TestOllama();
+//   TestOllama();
 }

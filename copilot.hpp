@@ -216,7 +216,7 @@ class COPILOT
 	}
 
 	std::vector<DLL_LIST> dlls;
-	HANDLE hFM = 0, hFO = 0, hEI = 0, hEO = 0;
+	HANDLE hFM = 0, hFO = 0, hEI = 0, hEO = 0, hEC = 0;
 	void* p1 = 0;
 	void* p2 = 0;
 
@@ -249,6 +249,11 @@ class COPILOT
 		{
 			CloseHandle(hEO);
 			hEO = 0;
+		}
+		if (hEC)
+		{
+			CloseHandle(hEC);
+			hEC = 0;
 		}
 	}
 
@@ -331,7 +336,6 @@ public:
 			{"Claude-Sonnet-4.5",1,1},
 			{"Claude-Opus-4.5",3.0f,1},
 
-			{ "Gemini-2.5-Pro",1,1 },
 			{ "Gemini-3-Pro-Preview",1,1 },
 
 		};
@@ -487,6 +491,11 @@ public:
 	}
 
 
+	void CancelCurrent()
+	{
+		if (hEC)
+			SetEvent(hEC);
+	}
 
 
 	std::shared_ptr<COPILOT_ANSWER> PushPrompt(const std::wstring& prompt,bool W, HRESULT(__stdcall* cb1)(std::string token, LPARAM lp) = 0,LPARAM lpx = 0)
@@ -923,6 +932,7 @@ async def main():
     shm_out = SharedMemory(name="shm_out_%S", create=True, size=1024*1024)
     ev_in = win32event.CreateEvent(None, 0, 0, "ev_in_%S")
     ev_out = win32event.CreateEvent(None, 0, 0, "ev_out_%S")
+    ev_cancel = win32event.CreateEvent(None, 0, 0, "ev_cancel_%S")
     buf = shm_out.buf
     struct.pack_into("<I", buf, 0, 0)         # write_index
     struct.pack_into("<I", buf, 4, 0)         # read_index
@@ -975,6 +985,11 @@ async def main():
             # print it
             print(event.data.delta_content, end='', flush=True)
             ring_write(payload)
+            # if ev_cancel is set, stop
+            wait = win32event.WaitForSingleObject(ev_cancel, 0)
+            if wait == win32event.WAIT_OBJECT_0:
+                asyncio.get_running_loop().create_task(session.abort())
+
             # set event
             win32event.SetEvent(ev_out)
 
@@ -1022,9 +1037,6 @@ asyncio.run(main())
 
 		PushPopDirX ppd(cp.folder.c_str());
 		auto tf = TempFile(L"py");
-#ifdef _DEBUG
-		tf = L"r:\\1.py";
-#endif
 		std::vector<char> data(1000000);
 
 		CLSID clsid = {};
@@ -1179,7 +1191,7 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 
 
 		sprintf_s(data.data(), data.size(), py, dll_entries.c_str(),cli.c_str(), 
-			clsid_buf, clsid_buf, clsid_buf, clsid_buf,
+			clsid_buf, clsid_buf, clsid_buf, clsid_buf, clsid_buf,
 			config.data()
 			);
 
@@ -1194,7 +1206,7 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 		// Get the shared memory and events
 	
 		// 5 tries
-		for (int tr = 0; tr < 5; tr++)
+		for (int tr = 0; tr < 15; tr++)
 		{
 			if (!hFM)
 				hFM = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, (L"shm_in_" + std::wstring(clsid_buf)).c_str());
@@ -1204,7 +1216,9 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 				hEI = OpenEventW(EVENT_ALL_ACCESS, FALSE, (L"ev_in_" + std::wstring(clsid_buf)).c_str());
 			if (!hEO)
 				hEO = OpenEventW(EVENT_ALL_ACCESS, FALSE, (L"ev_out_" + std::wstring(clsid_buf)).c_str());
-			if (!hFM || !hFO || !hEI || !hEO)
+			if (!hEC)
+				hEC = OpenEventW(EVENT_ALL_ACCESS, FALSE, (L"ev_cancel_" + std::wstring(clsid_buf)).c_str());
+			if (!hFM || !hFO || !hEI || !hEO || !hEC)
 			{
 				Sleep(1000);
 	
@@ -1212,13 +1226,18 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 			else
 				break;
 		}
-		if (!hFM || !hFO || !hEI || !hEO)
+		if (!hFM || !hFO || !hEI || !hEO || !hEC)
 		{
 			CloseAllHandles();
 			if (hProcess)
+			{
+				TerminateProcess(hProcess, 0);
 				CloseHandle(hProcess);
+			}
 			hProcess = 0;
+#ifndef _DEBUG
 			DeleteFileW(tf.c_str());
+#endif
 			return;
 		}
 		p1 = MapViewOfFile(hFM, FILE_MAP_ALL_ACCESS, 0, 0, 0);
@@ -1240,8 +1259,8 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 			{
 				auto buf = (char*)p1;
 				size_t sz = prompt.size();
-				if (sz > 1020)
-					sz = 1020;
+				if (sz > (1024*1024 - 10))					
+					sz = 1024 * 1024 - 10;
 				// First 4 bytes = size
 				*(unsigned int*)buf = (unsigned int)sz;
 				memcpy(buf + 4, prompt.c_str(), sz);
