@@ -318,6 +318,33 @@ public:
 		return dlls.size() - 1;
 	}	
 
+	static std::vector<COPILOT_MODEL> ollama_list()
+	{
+		//http://localhost:11434/api/tags
+		RESTAPI::REST r;
+		r.Connect(L"localhost", false, 11434);
+		RESTAPI::memory_data_provider d(0, 0);
+		auto ji = r.Request2(L"/api/tags",d,true,L"GET");
+		std::vector<char> dd;
+		r.ReadToMemory(ji,dd);
+		if (dd.size() == 0)
+			return {};
+		std::string s(dd.data(), dd.size());
+		auto jx = nlohmann::json::parse(s);
+		std::vector<COPILOT_MODEL> models;
+		for (auto& item : jx["models"])
+		{
+			std::string name = item["model"];
+			COPILOT_MODEL m;
+			m.name = name;
+			m.rate = 0.0f;
+			m.Premium = 0;
+			models.push_back(m);
+		}
+		return models;
+	}
+
+
 	static std::vector<COPILOT_MODEL> copilot_model_list() {
 		return {
 			{"GPT-4.1",0,0},
