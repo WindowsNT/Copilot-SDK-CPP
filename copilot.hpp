@@ -163,31 +163,7 @@ class COPILOT
 		return s;
 	}
 
-	HANDLE Run(const wchar_t* y, bool W, DWORD flgx)
-	{
-		PROCESS_INFORMATION pInfo = { 0 };
-		STARTUPINFO sInfo = { 0 };
-
-		sInfo.cb = sizeof(sInfo);
-		wchar_t yy[1000];
-		swprintf_s(yy, 1000, L"%s", y);
-		CreateProcess(0, yy, 0, 0, 0, flgx, 0, 0, &sInfo, &pInfo);
-		SetPriorityClass(pInfo.hProcess, IDLE_PRIORITY_CLASS);
-		SetThreadPriority(pInfo.hThread, THREAD_PRIORITY_IDLE);
-		if (W)
-			WaitForSingleObject(pInfo.hProcess, INFINITE);
-		else
-		{
-			CloseHandle(pInfo.hThread);
-			return pInfo.hProcess;
-		}
-		DWORD ec = 0;
-		GetExitCodeProcess(pInfo.hProcess, &ec);
-		CloseHandle(pInfo.hProcess);
-		CloseHandle(pInfo.hThread);
-		return (HANDLE)(unsigned long long)ec;
-	}
-
+	
 	std::shared_ptr<std::thread> interactiveThread;
 	HANDLE hProcess = 0;
 	std::recursive_mutex promptMutex;
@@ -264,6 +240,30 @@ class COPILOT
 public:
 
 	std::any user_data;
+	static HANDLE Run(const wchar_t* y, bool W, DWORD flgx)
+	{
+		PROCESS_INFORMATION pInfo = { 0 };
+		STARTUPINFO sInfo = { 0 };
+
+		sInfo.cb = sizeof(sInfo);
+		wchar_t yy[1000];
+		swprintf_s(yy, 1000, L"%s", y);
+		CreateProcess(0, yy, 0, 0, 0, flgx, 0, 0, &sInfo, &pInfo);
+		SetPriorityClass(pInfo.hProcess, IDLE_PRIORITY_CLASS);
+		SetThreadPriority(pInfo.hThread, THREAD_PRIORITY_IDLE);
+		if (W)
+			WaitForSingleObject(pInfo.hProcess, INFINITE);
+		else
+		{
+			CloseHandle(pInfo.hThread);
+			return pInfo.hProcess;
+		}
+		DWORD ec = 0;
+		GetExitCodeProcess(pInfo.hProcess, &ec);
+		CloseHandle(pInfo.hProcess);
+		CloseHandle(pInfo.hThread);
+		return (HANDLE)(unsigned long long)ec;
+	}
 
 	static std::wstring tou(const char* s)
 	{

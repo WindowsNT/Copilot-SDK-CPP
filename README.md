@@ -4,7 +4,7 @@ Github released the [Copilot SDK](https://github.com/github/copilot-sdk) and her
 
 # Copilot Installation
 * Create a folder with python installed 
-* pip install github-copilot-sdk
+* pip install github-copilot-sdk asyncio pywin32
 * Put [copilot.exe](https://github.com/github/copilot-cli/releases/) in that folder
 
 # LLama Installation
