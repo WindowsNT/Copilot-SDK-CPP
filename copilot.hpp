@@ -1039,17 +1039,12 @@ public:
 		return ans->Collect();
 	}
 
-	std::vector<COPILOT_SDK_MODEL> ListModelsFromSDK()
+	std::vector<COPILOT_SDK_MODEL> ModelsFromJ(std::string s)
 	{
-		std::vector<COPILOT_SDK_MODEL> models;
-		auto ans = PushPrompt(L"/models", true);
-		if (!ans)
-			return models;
-		std::wstring r = ans->Collect();
-		auto s = toc(r.c_str());
 		try
 		{
 			auto jx = nlohmann::json::parse(s);
+			std::vector<COPILOT_SDK_MODEL> models;
 			for (auto& item : jx)
 			{
 				COPILOT_SDK_MODEL m;
@@ -1090,12 +1085,89 @@ public:
 					models.push_back(m);
 				}
 			}
+			return models;
 		}
 		catch (...)
 		{
 			return {};
 		}
-		return models;
+	}
+
+	std::vector<COPILOT_SDK_MODEL> ListModelsBeforeConnection()
+	{
+		const char* py = R"(
+import sys
+import asyncio
+import json
+from dataclasses import asdict
+
+from copilot import CopilotClient
+client = CopilotClient()
+async def main():
+    await client.start()
+    models = await client.list_models()
+    j = json.dumps([asdict(m) for m in models], indent=2, ensure_ascii=False)
+    print(j)
+    with open(sys.argv[1], 'w') as f:
+        print(j, file=f) 
+    
+if len(sys.argv) <= 1:
+    exit()
+asyncio.run(main())
+ 
+)";
+
+		PushPopDirX ppd(cp.folder.c_str());
+		auto tf = TempFile(L"py");
+		std::vector<char> data(1000000);
+		// Write py to file
+		HANDLE h = CreateFileW(tf.c_str(), GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+		if (h != INVALID_HANDLE_VALUE)
+		{
+			DWORD written = 0;
+			WriteFile(h, py, (DWORD)strlen(py), &written, 0);
+			CloseHandle(h);
+		}
+		else
+		{
+			return {};
+		}
+		auto tf2 = TempFile(L"json");
+		std::wstring cmd = L"python \"";
+		cmd += tf.c_str();
+		cmd += L"\" \"";
+		cmd += tf2.c_str();
+		cmd += L"\"";
+		Run(cmd.c_str(), true, CREATE_NO_WINDOW);
+		// Read json from file
+		HANDLE h2 = CreateFileW(tf2.c_str(), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+		if (h2 != INVALID_HANDLE_VALUE)
+		{
+			DWORD read = 0;
+			std::vector<char> buffer(1000000);
+			ReadFile(h2, buffer.data(), (DWORD)buffer.size() - 1, &read, 0);
+			CloseHandle(h2);
+			if (read > 0)
+			{
+				buffer[read] = 0;
+				std::string s(buffer.data(), read);
+				return ModelsFromJ(s);
+			}
+		}
+		return { };
+	}
+
+	std::vector<COPILOT_SDK_MODEL> ListModelsFromSDK()
+	{
+		if (State() != L"connected")
+			return ListModelsBeforeConnection();
+		std::vector<COPILOT_SDK_MODEL> models;
+		auto ans = PushPrompt(L"/models", true);
+		if (!ans)
+			return models;
+		std::wstring r = ans->Collect();
+		auto s = toc(r.c_str());
+		return ModelsFromJ(s);
 	}
 
 	void InteractiveCopilot(std::function<COPILOT_QUESTION(LPARAM lp)> pro,std::function<void(std::wstring, unsigned long long key,LPARAM lp,bool End)> cb,LPARAM lp)

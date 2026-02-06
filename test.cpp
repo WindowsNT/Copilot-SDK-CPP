@@ -7,7 +7,7 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 
 // Change this 
-#define YOUR_COPILOT_FOLDER COPILOT::GetDefaultCopilotfolder()
+//#define YOUR_COPILOT_FOLDER COPILOT::GetDefaultCopilotfolder()
 
 /*
 void TestOpenAI()
@@ -116,8 +116,8 @@ void TestCopilot()
         {"date", "int", "Date to get the weather for"}
         });
 
-    cop.BeginInteractive();
     [[maybe_unused]] auto sdk_models = cop.copilot_model_list();
+    cop.BeginInteractive();
     auto reply = cop.Ping();
     reply = cop.State();
     reply = cop.AuthState();
