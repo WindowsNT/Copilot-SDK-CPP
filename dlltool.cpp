@@ -20,7 +20,27 @@ extern "C" {
 		return mem;
 	}
 
-	// free memory returned by CallJson
+
+	__declspec(dllexport)
+		const char* ask_user(const char* question)
+	{
+		MessageBox(0, L"yo", 0, 0);
+		json req = json::parse(question);
+		// "question" -> the question
+		// "choices" -> array of choices (if any)
+		// "allowFreeForm" -> if true, the user can type a free form answer instead of choosing from choices
+
+		json resp;
+		resp["answer"] = "My name is Michael";
+		resp["wasFreeform"] = true;
+
+		std::string out = resp.dump();
+		char* mem = (char*)std::malloc(out.size() + 1);
+		memcpy(mem, out.c_str(), out.size() + 1);
+		return mem;
+	}
+
+	// free memory returned by pcall
 	__declspec(dllexport)
 		void pdelete(const char* p)
 	{

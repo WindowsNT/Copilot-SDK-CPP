@@ -43,8 +43,20 @@ void TestOpenAI()
 }
 */
 
-void AskQuestion(COPILOT& cop,bool Tool = false,bool Image = false)
+void AskQuestion(COPILOT& cop,bool Tool = false,bool Image = false,bool AskUser = false)
 {
+    if (AskUser)
+    {
+        auto ans = cop.PushPrompt(L"What is my name?", true, [](std::string tok, LPARAM lp)->HRESULT
+            {
+                COPILOT* cop = (COPILOT*)lp;
+                std::wcout << cop->tou(tok.c_str());
+                return S_OK;
+            }, (LPARAM)&cop);
+        std::wstring s = ans->Collect();
+        MessageBox(0, s.c_str(), 0, 0);
+
+    }
     if (Tool)
     {
         auto ans = cop.PushPrompt(L"Tell me the weather in Athens in 25 January 2026", true, [](std::string tok, LPARAM lp)->HRESULT
@@ -125,7 +137,7 @@ void TestCopilot()
     COPILOT cop(cp);
 
     auto sl1 = cop.ChangeSlash(dll_path.data());
-    auto dll_idx = cop.AddDll(sl1.c_str(), "pcall", "pdelete");
+    auto dll_idx = cop.AddDll(sl1.c_str(), "pcall", "pdelete","ask_user");
     cop.AddTool(dll_idx, "GetWeather", "Get the current weather for a city in a specific date", {
         {"city", "str", "Name of the city to get the weather for"},
         {"date", "int", "Date to get the weather for"}
@@ -136,7 +148,7 @@ void TestCopilot()
     auto reply = cop.Ping();
     reply = cop.State();
     reply = cop.AuthState();
-    AskQuestion(cop,true,true);
+    AskQuestion(cop,true,true,false);
     cop.EndInteractive();
 }
 

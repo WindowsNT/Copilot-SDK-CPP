@@ -73,6 +73,7 @@ struct DLL_LIST
 	std::wstring dllpath;
 	std::string callfunc;
 	std::string deletefunc;
+	std::string ask_user_func;
 	std::vector<TOOL_ENTRY> tools;
 
 };
@@ -361,12 +362,14 @@ public:
 	}
 
 
-	size_t AddDll(const std::wstring& dllpath, const std::string& callfunc, const std::string& deletefunc)
+	size_t AddDll(const std::wstring& dllpath, const std::string& callfunc, const std::string& deletefunc,const char* ask_user = nullptr)
 	{
 		DLL_LIST d;
 		d.dllpath = dllpath;
 		d.callfunc = callfunc;
 		d.deletefunc = deletefunc;
+		if (ask_user)
+			d.ask_user_func = ask_user;
 		dlls.push_back(d);
 		return dlls.size() - 1;
 	}	
@@ -1400,16 +1403,30 @@ asyncio.run(main())
 			auto& d = dlls[iDLL];
 			std::vector<char> d1(10000);
 			sprintf_s(d1.data(),10000,R"(dll%zi = ctypes.CDLL("%s")
-dll%zi.pcall.argtypes = (ctypes.c_char_p,)
-dll%zi.pcall.restype  = ctypes.c_void_p
-dll%zi.pdelete.argtypes = (ctypes.c_void_p,)
+dll%zi.%s.argtypes = (ctypes.c_char_p,)
+dll%zi.%s.restype  = ctypes.c_void_p
+dll%zi.ask_user.argtypes = (ctypes.c_char_p,)
+dll%zi.ask_user.restype  = ctypes.c_void_p
+dll%zi.%s.argtypes = (ctypes.c_void_p,)
 def call_cpp%zi(obj):
     s = json.dumps(obj).encode("utf-8")
-    p = dll%zi.pcall(s)
+    p = dll%zi.%s(s)
     result = ctypes.string_at(p).decode("utf-8")
-    dll%zi.pdelete(p)
+    dll%zi.%s(p)
     return json.loads(result)
-)", iDLL + 1,toc(d.dllpath.c_str()).c_str(), iDLL + 1, iDLL + 1,iDLL + 1,iDLL + 1,iDLL + 1,iDLL + 1);
+def au_cpp%zi(obj):
+    s = json.dumps(obj).encode("utf-8")
+    p = dll%zi.%s(s)
+    result = ctypes.string_at(p).decode("utf-8")
+    dll%zi.%s(p)
+    return json.loads(result)
+)", iDLL + 1,toc(d.dllpath.c_str()).c_str(),
+
+		iDLL + 1, d.callfunc.c_str(),iDLL + 1, d.callfunc.c_str(),iDLL + 1, iDLL + 1, iDLL + 1,d.deletefunc.c_str(),
+
+			iDLL + 1,iDLL + 1, d.callfunc.c_str(),iDLL + 1,d.deletefunc.c_str(),
+				iDLL + 1, iDLL + 1, d.ask_user_func.length() ? d.ask_user_func.c_str() : "do_not_ask_user", iDLL + 1, d.deletefunc.c_str()
+				);
 			dll_entries += d1.data();
 			dll_entries += "\r\n";
 
@@ -1474,6 +1491,18 @@ async def %s(params: tool%zi%zi_params) -> dict:)",t.desc.c_str(),t.name.c_str()
 		sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
         "model": "%s",
         "streaming": True,)", cp.model.c_str());
+
+		// Dlls ask_user any
+		for (size_t i = 0; i < dlls.size(); i++)
+		{
+			auto& d = dlls[i];
+			if (d.ask_user_func.length())
+			{
+				sprintf_s(config.data() + strlen(config.data()), 10000 - strlen(config.data()), R"(
+		"on_user_input_request": au_cpp%zi,)", i + 1);
+				break;
+			}
+		}
 
 		// reasoning_effort
 		if (cp.reasoning_effort.length())
