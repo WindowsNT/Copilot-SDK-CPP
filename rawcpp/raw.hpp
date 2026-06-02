@@ -86,6 +86,14 @@ struct COPILOT_SKILL
 
 class COPILOT_RAW;
 
+struct COPILOT_BILLING
+{
+	int inputPrice = 0;
+	int outputPrice = 0;
+	int cachePrice = 0;
+	int batchSize = 0;
+	int contentMax = 0;
+};
 struct COPILOT_RAW_SDK_MODEL
 {
 	std::string id;
@@ -104,7 +112,7 @@ struct COPILOT_RAW_SDK_MODEL
 	bool structured_outputs = 0;
 	bool streaming = 1;
 	std::string Terms;
-	float rate = 0.0f;
+	COPILOT_BILLING Billing;
 	bool Ollama = 0;
 };
 
@@ -1074,7 +1082,7 @@ public:
 					for (auto& l : st.models)
 					{
 						wchar_t buf[200] = {};
-						swprintf_s(buf, 100, L"%6.2f - %S\r\n", l.rate, l.fullname.c_str());
+						swprintf_s(buf, 100, L"%i - %S\r\n", l.Billing.outputPrice, l.fullname.c_str());
 						s += buf;
 					}
 					// Quota
@@ -1179,12 +1187,20 @@ nlohmann::json AuthStatus()
 	return r;	
 	}
 
-	nlohmann::json ModelList()
+	nlohmann::json ModelList(std::shared_ptr<COPILOT_SESSION> s = nullptr)
 	{
 		nlohmann::json j;
 		j["jsonrpc"] = "2.0";
 		j["id"] = next();
-		j["method"] = "models.list";
+		if (s)
+		{
+			j["method"] = "session.model.list";
+			j["params"]["sessionId"] = s->sessionId;
+		}
+		else
+		{
+			j["method"] = "models.list";
+		}
 		auto r = ret(j,true);
 		return r;
 	}
@@ -1223,6 +1239,19 @@ nlohmann::json AuthStatus()
 		j["jsonrpc"] = "2.0";
 		j["id"] = next();
 		j["method"] = "session.usage.getMetrics";
+		j["params"]["sessionId"] = s->sessionId;
+		return ret(j, true);
+	}
+
+
+	nlohmann::json SummarizeForHandoff(std::shared_ptr<COPILOT_SESSION> s)
+	{
+		if (!s)
+			return {};
+		nlohmann::json j;
+		j["jsonrpc"] = "2.0";
+		j["id"] = next();
+		j["method"] = "session.history.summarizeForHandoff";
 		j["params"]["sessionId"] = s->sessionId;
 		return ret(j, true);
 	}
@@ -1299,6 +1328,23 @@ nlohmann::json AuthStatus()
 		j["jsonrpc"] = "2.0";
 		j["id"] = next();
 		j["method"] = "session.permissions.setApproveAll";
+		j["params"]["sessionId"] = s->sessionId;
+		j["params"]["enabled"] = V;
+		auto r = ret(j, true);
+		return r;
+
+	}
+
+	nlohmann::json  SetAllowAllPermissions(std::shared_ptr<COPILOT_SESSION> s, bool V)
+	{
+		if (!s)
+			return {};
+		if (s->ollama)
+			return {};
+		nlohmann::json j;
+		j["jsonrpc"] = "2.0";
+		j["id"] = next();
+		j["method"] = "session.permissions.setAllowAll";
 		j["params"]["sessionId"] = s->sessionId;
 		j["params"]["enabled"] = V;
 		auto r = ret(j, true);
@@ -1383,6 +1429,19 @@ nlohmann::json AuthStatus()
 		j["method"] = "session.abort";
 		j["params"]["sessionId"] = s->sessionId;
 		ret(j,false);
+		PendingComplete(s);
+	}
+
+	void Shutdown(std::shared_ptr<COPILOT_SESSION> s)
+	{
+		if (!s)
+			return;
+		nlohmann::json j;
+		j["jsonrpc"] = "2.0";
+		j["id"] = next();
+		j["method"] = "session.shutdown";
+		j["params"]["sessionId"] = s->sessionId;
+		ret(j, false);
 		PendingComplete(s);
 	}
 
@@ -2047,8 +2106,14 @@ nlohmann::json AuthStatus()
 					}
 
 					// billing multiplier
-					if (item.contains("billing") && item["billing"].contains("multiplier"))
-						m.rate = item["billing"]["multiplier"].get<float>();
+					if (item.contains("billing"))
+					{
+						if (item["billing"].contains("inputPrice")) m.Billing.inputPrice = item["billing"]["inputPrice"].get<int>();
+						if (item["billing"].contains("outputPrice")) m.Billing.outputPrice = item["billing"]["outputPrice"].get<int>();
+						if (item["billing"].contains("cachePrice")) m.Billing.cachePrice = item["billing"]["cachePrice"].get<int>();
+						if (item["billing"].contains("batchSize")) m.Billing.batchSize = item["billing"]["batchSize"].get<int>();
+						if (item["billing"].contains("contentMax")) m.Billing.contentMax = item["billing"]["contentMax"].get<int>();
+					}
 
 					models.push_back(m);
 				}
@@ -2121,7 +2186,6 @@ nlohmann::json AuthStatus()
 			COPILOT_RAW_SDK_MODEL m;
 			m.id = name;
 			m.fullname = name;
-			m.rate = 0.0f;
 			m.Ollama = 1;
 
 			// use /api/show /{model} to get capabilities

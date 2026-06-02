@@ -335,6 +335,20 @@ class Copilot {
         return $this->sendmessage($r,$return_only_response ? 2 : 1);
     }
 
+    public function AllowAll($sessionid)
+    {
+        $r = array();
+        $r["jsonrpc"] = "2.0";
+        $r["id"] = $this->next();
+        $r["method"] = "session.permissions.setApproveAll";
+        $r["params"] = array(
+            "sessionId" => $sessionid,
+            );
+        // Send to socket
+        return $this->sendmessage($r,3);
+
+    }
+
     public function EndSession($sessionid,$delete_files)
     {
         $r = array();

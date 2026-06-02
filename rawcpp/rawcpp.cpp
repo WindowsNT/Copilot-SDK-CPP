@@ -70,8 +70,6 @@ int wmain()
 //	COPILOT_RAW raw(L"f:\\copilot2\\copilot.exe", 3000, "your_token",1);
 	
 	
-	// std::vector<std::shared_ptr<COPILOT_SESSION>> sessions;
-	// raw.Sessions(sessions);
 
 
 	int iVersion = 0;
@@ -79,12 +77,20 @@ int wmain()
 	auto st = raw.Status();
 
 
+	if (0)
+	{
+		std::vector<std::shared_ptr<COPILOT_SESSION>> sessions;
+		raw.Sessions(sessions);
+
+	}
+
 
 	//	raw.SetMode(s1, COPILOT_RAW_MODE::INTERACTIVE);
 	if (0)
 	{
 		// Simple
 		auto s1 = raw.CreateSession("gpt-4.1", nullptr);
+		auto models_for_this = raw.ModelList(s1);
 		raw.SetApproveAllPermissions(s1,true);
 		auto m1 = raw.One(s1, "Hello there", 60000);
 		raw.Metrics(s1);
@@ -103,6 +109,8 @@ int wmain()
 	if (0)
 	{
 		auto s1 = raw.CreateSession("gpt-4.1", nullptr);
+		raw.SetAllowAllPermissions(s1, true);
+		raw.SetApproveAllPermissions(s1, true);
 		auto n1 = raw.SetName(s1, "A name");
 		auto n2 = raw.GetName(s1);
 
