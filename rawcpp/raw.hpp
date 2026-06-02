@@ -1082,7 +1082,7 @@ public:
 					for (auto& l : st.models)
 					{
 						wchar_t buf[200] = {};
-						swprintf_s(buf, 100, L"%i - %S\r\n", l.Billing.outputPrice, l.fullname.c_str());
+						swprintf_s(buf, 100, L"%05i - %S\r\n", l.Billing.outputPrice, l.fullname.c_str());
 						s += buf;
 					}
 					// Quota
@@ -2106,13 +2106,13 @@ nlohmann::json AuthStatus()
 					}
 
 					// billing multiplier
-					if (item.contains("billing"))
+					if (item.contains("billing") && item["billing"].contains("tokenPrices"))
 					{
-						if (item["billing"].contains("inputPrice")) m.Billing.inputPrice = item["billing"]["inputPrice"].get<int>();
-						if (item["billing"].contains("outputPrice")) m.Billing.outputPrice = item["billing"]["outputPrice"].get<int>();
-						if (item["billing"].contains("cachePrice")) m.Billing.cachePrice = item["billing"]["cachePrice"].get<int>();
-						if (item["billing"].contains("batchSize")) m.Billing.batchSize = item["billing"]["batchSize"].get<int>();
-						if (item["billing"].contains("contentMax")) m.Billing.contentMax = item["billing"]["contentMax"].get<int>();
+						if (item["billing"]["tokenPrices"].contains("inputPrice")) m.Billing.inputPrice = item["billing"]["tokenPrices"]["inputPrice"].get<int>();
+						if (item["billing"]["tokenPrices"].contains("outputPrice")) m.Billing.outputPrice = item["billing"]["tokenPrices"]["outputPrice"].get<int>();
+						if (item["billing"]["tokenPrices"].contains("cachePrice")) m.Billing.cachePrice = item["billing"]["tokenPrices"]["cachePrice"].get<int>();
+						if (item["billing"]["tokenPrices"].contains("batchSize")) m.Billing.batchSize = item["billing"]["tokenPrices"]["batchSize"].get<int>();
+						if (item["billing"]["tokenPrices"].contains("contentMax")) m.Billing.contentMax = item["billing"]["tokenPrices"]["contentMax"].get<int>();
 					}
 
 					models.push_back(m);
