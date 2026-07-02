@@ -106,7 +106,7 @@ struct COPILOT_RAW_SDK_MODEL
 	int MaxContextWindowTokens = 0;
 	int MaxPromptImages = 0;
 	int MaxPromptImageSize = 0;
-	bool adaptive_thinking = 0;
+	std::string adaptive_thinking;
 	bool tool_calls = 0;
 	bool reasoningEffort = 0;
 	bool structured_outputs = 0;
@@ -2048,6 +2048,9 @@ nlohmann::json AuthStatus()
 			std::vector<COPILOT_RAW_SDK_MODEL> models;
 			for (auto& item : jx)
 			{
+#ifdef _DEBUG
+				[[maybe_unused]] auto du = item.dump();
+#endif
 				COPILOT_RAW_SDK_MODEL m;
 				m.id = item["id"].get<std::string>();
 				m.fullname = item["name"].get<std::string>();
@@ -2063,7 +2066,7 @@ nlohmann::json AuthStatus()
 					{
 						auto& supports = capabilities["supports"];
 						if (supports.contains("adaptive_thinking"))
-							m.adaptive_thinking = supports["adaptive_thinking"].get<bool>();
+							m.adaptive_thinking = supports["adaptive_thinking"].get<std::string>();
 						if (supports.contains("tool_calls"))
 							m.tool_calls = supports["tool_calls"].get<bool>();
 						if (supports.contains("reasoningEffort"))
@@ -2114,9 +2117,8 @@ nlohmann::json AuthStatus()
 						if (item["billing"]["tokenPrices"].contains("batchSize")) m.Billing.batchSize = item["billing"]["tokenPrices"]["batchSize"].get<int>();
 						if (item["billing"]["tokenPrices"].contains("contentMax")) m.Billing.contentMax = item["billing"]["tokenPrices"]["contentMax"].get<int>();
 					}
-
-					models.push_back(m);
 				}
+				models.push_back(m);
 			}
 			return models;
 		}
